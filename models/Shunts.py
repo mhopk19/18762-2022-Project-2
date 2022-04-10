@@ -1,10 +1,12 @@
 from __future__ import division
 from itertools import count
-
+from models.Buses import Buses
+import scripts.global_vars as gv
 
 class Shunts:
     _ids = count(0)
-
+    base = gv.global_vars.MVAbase
+    
     def __init__(self,
                  Bus,
                  G_MW,
@@ -38,6 +40,30 @@ class Shunts:
         """
         self.id = self._ids.__next__()
 
+        self.Bus = Bus
+        self.G_MW = G_MW / Shunts.base
+        self.B_MVAR = B_MVAR / Shunts.base
+        self.shunt_type = shunt_type
+        self.Vhi = Vhi
+        self.Vlo = Vlo
+        self.Bmax = Bmax
+        self.Bmin = Bmin
+        self.Binit = Binit
+        self.controlBus = controlBus
+        self.flag_control_shunt_bus = flag_control_shunt_bus=False
+        
         # You will need to implement the remainder of the __init__ function yourself.
         # You should also add some other class functions you deem necessary for stamping,
         # initializing, and processing results.
+        
+    def stamp(self,Y,J):
+        v_node_r = Buses.bus_map[self.Bus].node_Vr
+        v_node_i = Buses.bus_map[self.Bus].node_Vi
+        
+        # independent voltage source stamping
+        Y[v_node_r][v_node_r] = self.G_MW
+        Y[v_node_r][v_node_i] = -self.B_MVAR
+        Y[v_node_i][v_node_r] = self.B_MVAR
+        Y[v_node_i][v_node_i] = self.G_MW
+        
+        return Y,J  

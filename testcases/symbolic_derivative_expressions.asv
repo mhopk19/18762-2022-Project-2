@@ -1,0 +1,11 @@
+syms Pl Pg Ql
+display("PQ bus");
+syms Irl(Vrl,Vil)
+syms Iil(Vrl,Vil) 
+Irl(Vrl,Vil) = (Pl*Vrl + Ql*Vil)/(Vrl^2 + Vil^2);
+Iil(Vrl,Vil) = (Pl*Vil - Ql*Vrl)/(Vrl^2 + Vil^2);
+
+display("PV bus");
+syms Irg(Vrl,Vil,Qg)
+Irg(Vrl,Vil) = (Pg*Vrl + Ql*Vil)/(Vrl^2 + Vil^2);
+Iig(Vrl,Vil) = (Pg*Vil - Ql*Vrl)/(Vrl^2 + Vil^2);s

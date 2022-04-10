@@ -10,6 +10,8 @@ class Buses:
     _node_index = count(0)
     bus_key_ = {}
     all_bus_key_ = {}
+    # creates a static bus mapping that all classes can use to map buses to nodes
+    bus_map = {}
 
     def __init__(self,
                  Bus,
@@ -38,6 +40,7 @@ class Buses:
         # initialize the bus key
         self.idAllBuses = self._idsAllBuses.__next__()
         Buses.all_bus_key_[self.Bus] = self.idAllBuses - 1
+        Buses.bus_map[self.Bus] = self
 
     def __str__(self):
         return_string = 'The bus number is : {} with Vr node as: {} and Vi node as {} '.format(self.Bus,
