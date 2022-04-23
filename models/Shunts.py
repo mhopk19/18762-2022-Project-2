@@ -57,13 +57,14 @@ class Shunts:
         # initializing, and processing results.
         
     def stamp(self,Y,J):
+        
         v_node_r = Buses.bus_map[self.Bus].node_Vr
         v_node_i = Buses.bus_map[self.Bus].node_Vi
         
         # independent voltage source stamping
-        Y[v_node_r][v_node_r] -= self.G_MW
-        Y[v_node_r][v_node_i] -= -self.B_MVAR
-        Y[v_node_i][v_node_r] -= self.B_MVAR
-        Y[v_node_i][v_node_i] -= self.G_MW
+        Y[v_node_r ][v_node_r ] -= self.G_MW
+        Y[v_node_r ][v_node_i ] -= -self.B_MVAR
+        Y[v_node_i ][v_node_r ] -= self.B_MVAR
+        Y[v_node_i ][v_node_i ] -= self.G_MW
         
         return Y,J  

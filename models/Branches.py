@@ -2,6 +2,9 @@ from __future__ import division
 from itertools import count
 from models.Buses import Buses
 
+from sympy import Symbol
+
+
 class Branches:
     _ids = count(0)
 
@@ -49,10 +52,10 @@ class Branches:
         
         
     def diagonal_stamp(self, Y, J, from_node, to_node):
-        Y[from_node][from_node] += self.G
-        Y[from_node][to_node] += -self.B
-        Y[to_node][from_node] += self.B
-        Y[to_node][to_node] += self.G
+        Y[from_node ][from_node ] += self.G
+        Y[from_node ][to_node ] += -self.B
+        Y[to_node ][from_node ] += self.B
+        Y[to_node ][to_node ] += self.G
         return Y, J
     
     def off_diagonal_stamp(self,Y,J,a,b,c,d):
@@ -66,7 +69,7 @@ class Branches:
         Y[b][d] += -self.G
         return Y, J
     
-    def stamp(self, Y, J):
+    def stamp(self, Y, J, x_offset = 0, y_offset = 0):
         # diagonal stamp blocks
         Y, J = self.diagonal_stamp(Y,J,Buses.bus_map[self.from_bus].node_Vr,
                                    Buses.bus_map[self.from_bus].node_Vi)
@@ -87,4 +90,33 @@ class Branches:
         
         return Y,J    
         
+    def get_lagrange(self, symb_v, symb_lambda):
+        # branch goes from node k to node m
+        kr = Buses.bus_map[self.from_bus].node_Vr
+        ki = Buses.bus_map[self.from_bus].node_Vi
+        mr = Buses.bus_map[self.to_bus].node_Vr
+        mi = Buses.bus_map[self.to_bus].node_Vi
         
+        
+        G = Symbol('G{}'.format(self.from_bus, self.to_bus))
+        B = Symbol('B{}'.format(self.from_bus, self.to_bus))
+        
+        vr1 = symb_v[kr]
+        vi1 = symb_v[ki]
+        vr2 = symb_v[mr]
+        vi2 = symb_v[mi]
+        
+        # expression is in terms of currents
+        r_expr_k = symb_lambda[kr] * ( vr1*G - vi1*B - vr2*G + vi2*B)
+        i_expr_k = symb_lambda[ki] * ( vr1*G + vi1*G - vr2*B - vi2*G)
+        r_expr_m = symb_lambda[mr] * (-vr1*G + vi1*B + vr2*G - vi2*B)
+        i_expr_m = symb_lambda[mi] * (-vr1*B + vi1*B + vr2*B + vi1*G)
+        
+        
+        return r_expr_k + i_expr_k + r_expr_m + i_expr_m  
+    
+    def update_symbols(self, dict, prev_v):
+        dict['G{}'.format(self.id)] = self.g
+        dict['B{}'.format(self.id)] = self.b
+        
+        return dict

@@ -3,6 +3,7 @@ from itertools import count
 from models.Buses import Buses
 import scripts.global_vars as gv
 
+from sympy import Symbol
 
 class Generators:
     _ids = count(0)
@@ -117,24 +118,24 @@ class Generators:
         
         # conductance and VCVS
         # Rg and Ig differentials
-        Y[v_node_r][v_node_r] += self.dIrg_dVrg(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node])
-        Y[v_node_r][v_node_i] += self.dIrg_dVig(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node])
-        Y[v_node_i][v_node_i] += self.dIig_dVig(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node])
-        Y[v_node_i][v_node_r] += self.dIig_dVrg(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node])
+        Y[v_node_r ][v_node_r ] += self.dIrg_dVrg(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node])
+        Y[v_node_r ][v_node_i ] += self.dIrg_dVig(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node])
+        Y[v_node_i ][v_node_i ] += self.dIig_dVig(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node])
+        Y[v_node_i ][v_node_r ] += self.dIig_dVrg(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node])
         
         # Qg differentials
-        Y[v_node_r][q_node] += self.dIrg_dQg(prev_v[v_node_r],prev_v[v_node_i])
-        Y[v_node_i][q_node] += self.dIig_dQg(prev_v[v_node_r],prev_v[v_node_i])
+        Y[v_node_r ][q_node ] += self.dIrg_dQg(prev_v[v_node_r],prev_v[v_node_i])
+        Y[v_node_i ][q_node ] += self.dIig_dQg(prev_v[v_node_r],prev_v[v_node_i])
         
         # historical values
         # Vrl
-        J[v_node_r] -= self.Irg(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node]) - \
+        J[v_node_r ] -= self.Irg(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node]) - \
             self.dIrg_dVrg(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node]) * prev_v[v_node_r] -\
             self.dIrg_dVig(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node]) * prev_v[v_node_i] -\
             self.dIrg_dQg(prev_v[v_node_r],prev_v[v_node_i]) * prev_v[q_node]
             
         # Vil
-        J[v_node_r] -= self.Iig(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node]) - \
+        J[v_node_r ] -= self.Iig(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node]) - \
             self.dIig_dVrg(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node]) * prev_v[v_node_r] -\
             self.dIig_dVig(prev_v[v_node_r],prev_v[v_node_i],prev_v[q_node]) * prev_v[v_node_i] -\
             self.dIig_dQg(prev_v[v_node_r],prev_v[v_node_i]) * prev_v[q_node]
@@ -142,10 +143,32 @@ class Generators:
         # V set row 
         # used to be multiples of 2 below
         v_eq_hist = -self.Vset**2 - prev_v[v_node_r]**2 - prev_v[v_node_i]**2   
-        Y[q_node][v_node_r] += 2 * prev_v[v_node_r]
-        Y[q_node][v_node_i] += 2 * prev_v[v_node_i]
-        J[q_node] -= v_eq_hist 
+        Y[q_node ][v_node_r ] += 2 * prev_v[v_node_r]
+        Y[q_node ][v_node_i ] += 2 * prev_v[v_node_i]
+        J[q_node ] -= v_eq_hist 
         
             
         return Y, J
     
+    def get_lagrange(self, symb_v, symb_lambda):
+        # branch goes from node k to node m
+        v_node_r = Buses.bus_map[self.Bus].node_Vr
+        v_node_i = Buses.bus_map[self.Bus].node_Vi
+        
+        Pg = Symbol('Pg{}'.format(self.id))
+        Qg = Symbol('Qg{}'.format(self.id))
+        
+        # expression is in terms of currents
+        denominator = (symb_v[v_node_r]**2 + symb_v[v_node_i]**2)
+        r_expr = symb_lambda[v_node_r] * (-Pg * symb_v[v_node_r] - Qg * symb_v[v_node_i]) / denominator 
+        i_expr = symb_lambda[v_node_i] *(-Pg * symb_v[v_node_i] - Qg * symb_v[v_node_r]) / denominator 
+
+        
+        return r_expr + i_expr
+    
+    def update_symbols(self, dict, prev_v):
+        q_node = Buses.bus_map[self.Bus].node_Q
+        dict['Pg{}'.format(self.id)] = self.P
+        dict['Qg{}'.format(self.id)] = prev_v[q_node]
+        
+        return dict

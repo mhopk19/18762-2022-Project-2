@@ -5,6 +5,11 @@ import scipy.sparse as sp
 import scripts.sparse_matrices as spm
 import scripts.sparse_matrices as sm
 
+import sympy
+from sympy import symbols
+
+import matplotlib.pyplot as plt
+
 class PowerFlow:
 
     def __init__(self,
@@ -38,9 +43,6 @@ class PowerFlow:
         self.size_y = size_y
         
         self.bus_map = {} # tuple mapping from integer number to bus
-        self.generator_dict = {} # mapping generators to solution indices (generator, indices vr,vi,q)
-        self.load_dict = {} # mapping load to solution indices
-        self.slack_dict = {} # mapping slack to solution indices
 
         # need a log of the partials for calculations
         # load: real: Irl/Vrl, Irl/Vil PV bus imag: Iil/Vrl, Iil/Vil
@@ -52,6 +54,17 @@ class PowerFlow:
         self.v_max_limit = 2
         self.v_min_limit = 0.0000000001
         self.delta_limit = 0.1
+        
+        # feasibility variables
+        self.feasibility_dict = {}
+        self.lgr = None
+        self.dx_lgr = None
+        self.symb_v = None
+        self.symb_lambda = None
+        self.symb_dict = {}
+        self.H_grad = None # the sub matrix of Y used in feasibility analysis
+        self.L_grad = None
+        
         
     def solve(self, Y, J, init_v):
         if (self.sparse == True):
@@ -142,23 +155,12 @@ class PowerFlow:
         pass
         
     def stamp_linear(self, slack, branch, transformer, shunt):
-        for s in slack:
-            self.Y, self.J = s.stamp(self.Y, self.J)
-        for b in branch:
-            self.Y, self.J = b.stamp(self.Y, self.J)
-        for t in transformer:
-            self.Y, self.J = t.stamp(self.Y, self.J)
-        for sh in shunt:
-            self.Y, self.J = sh.stamp(self.Y, self.J)
+        for comp in slack + branch + transformer + shunt:
+            self.Y, self.J = comp.stamp(self.Y, self.J)
             
-
     def stamp_nonlinear(self, load, generator, prev_v):
-        # loads
-        for l in load:
-            self.Y, self.J = l.stamp(self.Y, self.J, prev_v)
-        # generators
-        for g in generator:
-            self.Y, self.J = g.stamp(self.Y, self.J, prev_v)
+        for comp in load + generator:
+            self.Y, self.J = comp.stamp(self.Y, self.J, prev_v)
     
     def reset_stamps(self, size):
         if (self.sparse):
@@ -167,6 +169,16 @@ class PowerFlow:
         else:
             self.Y = np.zeros((size,size))
             self.J = np.zeros(size)
+            
+    def reset_stamps_feasibility(self,size_y,size_x):
+        if (self.sparse):
+            self.Y = spm.sparse_matrix(size = size_y)
+            self.J = spm.sparse_vector(size = size_y)
+        else:
+            self.Y = np.zeros((size_y,size_y))
+            self.H_grad = np.zeros((size_x, size_x))
+            self.L_grad = np.zeros((size_y - size_x, size_y - size_x))
+            self.J = np.zeros(size_y)        
         
     def run_powerflow(self,
                       v_init,
@@ -205,63 +217,42 @@ class PowerFlow:
         if (self.sparse == True):
             v_sol = sm.sparse_vector(arr = v_init)
         v_size = self.size_y
-        
         self.solution_v = np.copy(v)
 
         # initializing the MNA matrix/vectors
         self.reset_stamps(v_size)
-        
 
         # # # Stamp Linear Power Grid Elements into Y matrix # # #
-        # TODO: PART 1, STEP 2.1 - Complete the stamp_linear function which stamps all linear power grid elements.
-        #  This function should call the stamp_linear function of each linear element and return an updated Y matrix.
-        #  You need to decide the input arguments and return values.
-        self.stamp_linear(slack,branch,transformer,shunt)
+        for comp in slack + branch + transformer + shunt:
+            self.Y, self.J = comp.stamp(self.Y, self.J)
         
         # linear stamps which can be used as the starting point in NR iterations
         linear_stamps = (self.Y, self.J)
         
         # # # Initialize While Loop (NR) Variables # # #
-        # TODO: PART 1, STEP 2.2 - Initialize the NR variables
         err_max = np.inf  # maximum error at the current NR iteration
         tol = self.tol # chosen NR tolerance
         NR_count = 0  # current NR iteration
         
-        # resizing sparse matrix to avoid singularity
-        #if (sparse):
-        #    self.Y.sparse_matrix.resize((self.size_y, self.size_y))
-        #    self.J.sparse_matrix.resize((self.size_y, self.size_y))
-
-        # # # Begin Solving Via NR # # #
         # TODO: PART 1, STEP 2.3 - Complete the NR While Loop
         while (err_max > tol and (NR_count < self.max_iters)):
             print("NR iteration: {}".format(NR_count))
             self.Y, self.J = linear_stamps
             
             # # # Stamp Nonlinear Power Grid Elements into Y matrix # # #
-            # TODO: PART 1, STEP 2.4 - Complete the stamp_nonlinear function which stamps all nonlinear power grid
-            #  elements. This function should call the stamp_nonlinear function of each nonlinear element and return
-            #  an updated Y matrix. You need to decide the input arguments and return values.
-            self.stamp_nonlinear(load, generator, v_sol)
+            for comp in load + generator:
+                self.Y, self.J = comp.stamp(self.Y, self.J, v_sol)
 
             # # # Solve The System # # #
-            # TODO: PART 1, STEP 2.5 - Complete the solve function which solves system of equations Yv = J. The
-            #  function should return a new v_sol.
-            #  You need to decide the input arguments and return values.
             prev_v_sol = v_sol
             v_sol = self.solve(self.Y, self.J, v_sol)
 
             # # # Compute The Error at the current NR iteration # # #
-            # TODO: PART 1, STEP 2.6 - Finish the check_error function which calculates the maximum error, err_max
-            #  You need to decide the input arguments and return values
             err_max = self.check_error(self.Y, self.J, v_sol)
             print("max error at iteration:{}".format(err_max))
             #print("solution vector: {}".format(v_sol))
 
             # # # Compute The Error at the current NR iteration # # #
-            # TODO: PART 2, STEP 1 - Develop the apply_limiting function which implements voltage and reactive power
-            #  limiting. Also, complete the else condition. Do not complete this step until you've finished Part 1.
-            #  You need to decide the input arguments and return values.
             if self.enable_limiting and err_max > tol:
                 print("enable limiting")
                 v_sol = self.apply_limiting(v_sol, prev_v_sol, generator + slack + load)
@@ -275,3 +266,150 @@ class PowerFlow:
             NR_count = NR_count + 1
 
         return v_sol, NR_count
+
+    def run_feasibility_powerflow(self,
+                      v_init,
+                      bus,
+                      slack,
+                      generator,
+                      transformer,
+                      branch,
+                      shunt,
+                      load):
+        
+        def plot_matrix(matrix):
+            plt.imshow(matrix)
+            plt.show()
+        
+        n_bus = 0
+        # create bus mapping
+        for b in bus:
+            n_bus = n_bus + 1
+            self.bus_map[b.Bus] = b
+
+        step = 0
+        
+        # # # Copy v_init into the Solution Vectors used during NR, v, and the final solution vector v_sol # # #
+        v = np.copy(v_init)
+        v_sol = np.copy(v)
+        if (self.sparse == True):
+            v_sol = sm.sparse_vector(arr = v_init)
+        # actual v_size is different than size of the full matrix due to feasibility currents
+        v_size = self.size_y 
+        x_size = self.size_y - (2 * n_bus)
+        lambda_size = (2 * n_bus)
+        
+        self.solution_v = np.copy(v)
+
+        # initializing the MNA matrix/vectors
+        self.reset_stamps_feasibility(v_size, x_size)
+        
+        # STAMPING LINEAR COMPONENTS
+        
+        # stamping cross-term Jacobian
+        for comp in slack + branch + transformer + shunt:
+            self.H_grad, _ = comp.stamp(self.H_grad, self.J)
+        
+        # linear stamps which can be used as the starting point in NR iterations
+        H_grad_linear = self.H_grad
+        
+        
+        print("v_size: {} x_size:{} lamda_size:{}".format(v_size, x_size, lambda_size))
+        print("Y sub1", self.Y[v_size - x_size:v_size , 0:x_size].shape)
+        print("Y sub2", self.Y[0:x_size , v_size - x_size:v_size].shape)
+        print("Hgrad", H_grad_linear.shape)
+        
+        # CREATE Y_linear
+        
+        # add cross term Jacobians
+        # grad H
+        self.Y[v_size - x_size:v_size , 0:x_size] = H_grad_linear
+        # transpose grad H
+        self.Y[0:x_size , v_size - x_size:v_size] = H_grad_linear.T
+        # Lagrangian Hessian !!
+        
+        Y_linear = self.Y
+        
+        print("linear Y", Y_linear)
+        
+        # CREATE J_linear
+        
+        
+        # initialize feasibility analysis matrices
+        
+        
+        plot_matrix(Y_linear)
+    
+        # # # Set Hyper-parameters
+        tol = self.tol # chosen NR tolerance
+        NR_count = 0  # current NR iteration
+        err_max = np.inf # initial error to start loop
+        while (err_max > tol and (NR_count < self.max_iters)):
+            # original Y matrix
+            self.Y = Y_linear
+            self.H_grad = H_grad_linear
+            
+            # # # ADDING THE NON-LINEAR COMPONENTS
+            
+            # stamping cross-term Jacobian
+            for comp in load + generator:
+                H_grad_nonlinear, _ = comp.stamp(self.H_grad, self.J, v_sol)
+            
+            self.H_grad = H_grad_linear + H_grad_nonlinear
+            
+            # add H components to the Y matrix
+            self.Y[v_size - x_size:v_size , 0:x_size] = self.H_grad
+            # transpose grad H
+            self.Y[0:x_size , v_size - x_size:v_size] = self.H_grad.T
+            
+            
+            plot_matrix(self.Y)
+            
+            # # # Solve The System # # #
+            prev_v_sol = v_sol
+            #v_sol = self.solve(self.Y, self.J, v_sol)
+
+            # # # Compute The Error at the current NR iteration # # #
+            
+            err_max = 0
+            #err_max = self.check_error(self.Y, self.J, v_sol)
+            
+            #print("max error at iteration:{}".format(err_max))
+            #print("solution vector: {}".format(v_sol))
+
+            
+            print("NR iteration: {}".format(NR_count))
+            prev_v_sol = v_sol            
+            NR_count = NR_count + 1
+        
+        return v_sol, NR_count
+
+
+    def analyze_system(self, v_init, bus, slack, generator, transformer,
+                       branch, shunt, load):
+        v = v_init
+        v_size = len(v_init)
+        lambda_size = 2 * len(bus)
+        # feasibility calculations
+        components = branch + generator + load
+        self.symb_v = symbols('v:{}'.format(v_size))
+        self.symb_lambda = symbols('l:{}'.format(lambda_size))
+        self.Lgr = 0
+        
+        for comp in components:
+            self.Lgr = self.Lgr + comp.get_lagrange(self.symb_v, self.symb_lambda)
+        
+        # update dictionary
+        for comp in components:
+            self.symb_dict = comp.update_symbols(self.symb_dict, v)
+            
+        print("Lagrangian: {}".format(self.Lgr))
+        #print("After substitution: {}".format(self.Lgr.subs(self.symb_dict)))
+        
+        
+        test_load = load[0]
+        v_node_r = Buses.bus_map[test_load.Bus].node_Vr
+        v_node_i = Buses.bus_map[test_load.Bus].node_Vi
+        print("load: vr index:{} vi index:{}".format(v_node_r, v_node_i))
+        print("real derivative", sympy.diff(self.Lgr, "v{}".format(v_node_r)))
+        print("imaginary derivative", sympy.diff(self.Lgr, "v{}".format(v_node_i)))

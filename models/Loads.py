@@ -4,6 +4,9 @@ from models.Buses import Buses
 import math
 import scripts.global_vars as gv
 
+from sympy import Symbol
+
+
 class Loads:
     _ids = count(0)
     base = gv.global_vars.MVAbase
@@ -84,29 +87,48 @@ class Loads:
         return num/denom
     
     def stamp(self, Y, J, prev_v):
+        
         v_node_r = Buses.bus_map[self.Bus].node_Vr
         v_node_i = Buses.bus_map[self.Bus].node_Vi
         
         # conductance and VCVS
-        Y[v_node_r][v_node_r] += self.dIrl_dVrl(prev_v[v_node_r],prev_v[v_node_i])
-        Y[v_node_r][v_node_i] += self.dIrl_dVil(prev_v[v_node_r],prev_v[v_node_i])
-        Y[v_node_i][v_node_r] += self.dIil_dVrl(prev_v[v_node_r],prev_v[v_node_i])
-        Y[v_node_i][v_node_i] += self.dIil_dVil(prev_v[v_node_r],prev_v[v_node_i])
+        Y[v_node_r ][v_node_r ] += self.dIrl_dVrl(prev_v[v_node_r],prev_v[v_node_i])
+        Y[v_node_r ][v_node_i ] += self.dIrl_dVil(prev_v[v_node_r],prev_v[v_node_i])
+        Y[v_node_i ][v_node_r ] += self.dIil_dVrl(prev_v[v_node_r],prev_v[v_node_i])
+        Y[v_node_i ][v_node_i ] += self.dIil_dVil(prev_v[v_node_r],prev_v[v_node_i])
         
         # historical values
         # Vrl
-        J[v_node_r] -= self.Irl(prev_v[v_node_r],prev_v[v_node_i]) - \
+        J[v_node_r ] -= self.Irl(prev_v[v_node_r],prev_v[v_node_i]) - \
             self.dIrl_dVrl(prev_v[v_node_r],prev_v[v_node_i]) * prev_v[v_node_r] -\
             self.dIrl_dVil(prev_v[v_node_r],prev_v[v_node_i]) * prev_v[v_node_i]
             
         # Vil
-        J[v_node_i] -= self.Iil(prev_v[v_node_r],prev_v[v_node_i]) - \
+        J[v_node_i ] -= self.Iil(prev_v[v_node_r],prev_v[v_node_i]) - \
             self.dIil_dVrl(prev_v[v_node_r],prev_v[v_node_i]) * prev_v[v_node_r] -\
             self.dIil_dVil(prev_v[v_node_r],prev_v[v_node_i]) * prev_v[v_node_i]
             
         return Y, J
         
+    def get_lagrange(self, symb_v, symb_lambda):
+        # branch goes from node k to node m
+        v_node_r = Buses.bus_map[self.Bus].node_Vr
+        v_node_i = Buses.bus_map[self.Bus].node_Vi
+
+        Pl = Symbol('Pl{}'.format(self.id))
+        Ql = Symbol('Ql{}'.format(self.id))
         
+        # expression is in terms of currents
+        denominator = (symb_v[v_node_r]**2 + symb_v[v_node_i]**2)
+        r_expr = symb_lambda[v_node_r] * (Pl * symb_v[v_node_r] + Ql * symb_v[v_node_i]) / denominator 
+        i_expr = symb_lambda[v_node_i] *(Pl * symb_v[v_node_i] - Ql * symb_v[v_node_r]) / denominator 
+
+
         
+        return r_expr + i_expr       
         
-    
+    def update_symbols(self, dict, prev_v):
+        dict['Pl{}'.format(self.id)] = self.P
+        dict['Ql{}'.format(self.id)] = self.Q
+        
+        return dict
