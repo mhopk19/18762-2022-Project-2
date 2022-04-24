@@ -52,11 +52,10 @@ def solve(TESTCASE, SETTINGS):
 
     # FEASIBILITY: adding current injections to each bus
     if (feasibility):
-        injections = []
+        injection = []
         for b in bus:
-            injection = Injections(b.Bus)
-            injections.append(injection)
-            injection.assign_nodes()
+            i = Injections(b.Bus)
+            injection.append(i)
 
     # # # Initialize Solution Vector - V and Q values # # #
     # determine the size of the Y matrix by looking at the total number of nodes in the system
@@ -107,8 +106,8 @@ def solve(TESTCASE, SETTINGS):
     #  Circuit Formulation powerflow. The function will return a final solution vector v. Remove run_pf and the if
     #  condition once you've finished building your solver.
     if (feasibility):
-        v, nr_count = powerflow.run_feasibility_powerflow(v_init, bus, slack, generator, transformer, branch, shunt, load)
-        powerflow.analyze_system(v_init, bus, slack, generator, transformer,branch, shunt, load)
+        v, nr_count = powerflow.run_feasibility_powerflow(v_init, bus, slack, generator, transformer, branch, shunt, load, injection)
+        powerflow.analyze_system(v_init, bus, slack, generator, transformer,branch, shunt, load, injection)
     else:
         v, nr_count = powerflow.run_powerflow(v_init, bus, slack, generator, transformer, branch, shunt, load)
 

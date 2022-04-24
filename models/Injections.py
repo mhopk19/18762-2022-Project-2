@@ -31,19 +31,23 @@ class Injections:
         self.Bus = Bus
         
     
-    def assign_nodes(self):
-        """Assign the additional bus nodes for injections
-
-        Returns:
-            None
-        """
-        # these are the nodes for the current ammeter rows
-        self.node_R = Buses._node_index.__next__()
-        self.node_I = Buses._node_index.__next__()
+    #def assign_nodes(self):
+    #    """Assign the additional bus nodes for injections
+    #
+    #    Returns:
+    #        None
+    #    """
+    #    # these are the nodes for the current ammeter rows
+    #    self.node_R = Buses._node_index.__next__()
+    #    self.node_I = Buses._node_index.__next__()
+     
+    def stamp(self, Y, J, prev_lambda):
+        v_node_r = Buses.bus_map[self.Bus].node_Vr
+        v_node_i = Buses.bus_map[self.Bus].node_Vi
         
-    
-    def stamp(self, Y, J, prev_v):
-            
+        J[v_node_r] = prev_lambda[self.Bus]
+        J[v_node_i] = prev_lambda[self.Bus + 1]
+        
         return Y, J
         
         

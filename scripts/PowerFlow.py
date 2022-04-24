@@ -10,6 +10,31 @@ from sympy import symbols
 
 import matplotlib.pyplot as plt
 
+def print_matrix(matrix, width = 4):
+    matrix_list = np.round(matrix, width).tolist()
+    for row in matrix_list:
+        str = ""
+        for item in row:
+            if ((item > 0) or (item < 0)):
+                # maintain a maxium amount of decimal places
+                # account for negative signs
+                neg_flag = (item < 0)
+                if (neg_flag):
+                    int_width = int(np.floor(np.log10(item*-1)))   
+                else:
+                    int_width = int(np.floor(np.log10(item)))
+                    
+                decimal_places = '{}'.format(max(0, width - neg_flag - int_width))
+            else:
+                decimal_places = '{}'.format(width)
+                
+            substr = '{:.'+decimal_places+'f} '
+            str = str+substr.format(item)
+        print(str)
+    #print('\n'.join([''.join(['{:.5f}'.format(item) for item in row]) 
+    #            for row in matrix_list]))
+
+
 class PowerFlow:
 
     def __init__(self,
@@ -64,8 +89,8 @@ class PowerFlow:
         self.symb_dict = {}
         self.H_grad = None # the sub matrix of Y used in feasibility analysis
         self.L_grad = None
-        
-        
+
+           
     def solve(self, Y, J, init_v):
         if (self.sparse == True):
             Y.generate_matrix_from_sparse()
@@ -177,8 +202,10 @@ class PowerFlow:
         else:
             self.Y = np.zeros((size_y,size_y))
             self.H_grad = np.zeros((size_x, size_x))
+            self.lower_J = np.zeros(size_x)
             self.L_grad = np.zeros((size_y - size_x, size_y - size_x))
-            self.J = np.zeros(size_y)        
+            self.J = np.zeros(size_y)  
+                  
         
     def run_powerflow(self,
                       v_init,
@@ -275,7 +302,8 @@ class PowerFlow:
                       transformer,
                       branch,
                       shunt,
-                      load):
+                      load,
+                      injection):
         
         def plot_matrix(matrix):
             plt.imshow(matrix)
@@ -308,11 +336,11 @@ class PowerFlow:
         
         # stamping cross-term Jacobian
         for comp in slack + branch + transformer + shunt:
-            self.H_grad, _ = comp.stamp(self.H_grad, self.J)
+            self.H_grad, self.lower_J = comp.stamp(self.H_grad, self.lower_J)
         
         # linear stamps which can be used as the starting point in NR iterations
         H_grad_linear = self.H_grad
-        
+        lower_J_linear = self.lower_J
         
         print("v_size: {} x_size:{} lamda_size:{}".format(v_size, x_size, lambda_size))
         print("Y sub1", self.Y[v_size - x_size:v_size , 0:x_size].shape)
@@ -324,11 +352,12 @@ class PowerFlow:
         # add cross term Jacobians
         # grad H
         self.Y[v_size - x_size:v_size , 0:x_size] = H_grad_linear
-        # transpose grad H
-        self.Y[0:x_size , v_size - x_size:v_size] = H_grad_linear.T
+        self.J[v_size - x_size:v_size] = lower_J_linear
+        
+        
         # Lagrangian Hessian !!
         
-        Y_linear = self.Y
+        Y_linear, J_linear = (self.Y, self.J)
         
         print("linear Y", Y_linear)
         
@@ -345,25 +374,23 @@ class PowerFlow:
         NR_count = 0  # current NR iteration
         err_max = np.inf # initial error to start loop
         while (err_max > tol and (NR_count < self.max_iters)):
-            # original Y matrix
-            self.Y = Y_linear
-            self.H_grad = H_grad_linear
-            
             # # # ADDING THE NON-LINEAR COMPONENTS
             
-            # stamping cross-term Jacobian
+            # # stamping H component of Y matrix
             for comp in load + generator:
-                H_grad_nonlinear, _ = comp.stamp(self.H_grad, self.J, v_sol)
-            
-            self.H_grad = H_grad_linear + H_grad_nonlinear
+                self.H_grad, self.lower_J = comp.stamp(H_grad_linear, self.lower_J, v_sol)
+            for comp in injection:
+                _, self.lower_J = comp.stamp(self.Y, self.lower_J, v_sol[v_size-x_size:v_size])
             
             # add H components to the Y matrix
             self.Y[v_size - x_size:v_size , 0:x_size] = self.H_grad
-            # transpose grad H
-            self.Y[0:x_size , v_size - x_size:v_size] = self.H_grad.T
+            self.J[v_size - x_size:v_size] = self.lower_J
             
+            # # stamping upper part of Y matrix
             
             plot_matrix(self.Y)
+            print_matrix(self.Y)
+            print("J array", self.J)
             
             # # # Solve The System # # #
             prev_v_sol = v_sol
@@ -386,7 +413,7 @@ class PowerFlow:
 
 
     def analyze_system(self, v_init, bus, slack, generator, transformer,
-                       branch, shunt, load):
+                       branch, shunt, load, injection):
         v = v_init
         v_size = len(v_init)
         lambda_size = 2 * len(bus)
@@ -396,20 +423,26 @@ class PowerFlow:
         self.symb_lambda = symbols('l:{}'.format(lambda_size))
         self.Lgr = 0
         
-        for comp in components:
+        for comp in [generator[0]]:
             self.Lgr = self.Lgr + comp.get_lagrange(self.symb_v, self.symb_lambda)
         
         # update dictionary
-        for comp in components:
+        for comp in [generator[0]]:
             self.symb_dict = comp.update_symbols(self.symb_dict, v)
             
         print("Lagrangian: {}".format(self.Lgr))
         #print("After substitution: {}".format(self.Lgr.subs(self.symb_dict)))
         
         
-        test_load = load[0]
-        v_node_r = Buses.bus_map[test_load.Bus].node_Vr
-        v_node_i = Buses.bus_map[test_load.Bus].node_Vi
+        test_comp = generator[0]
+        v_node_r = Buses.bus_map[test_comp.Bus].node_Vr
+        v_node_i = Buses.bus_map[test_comp.Bus].node_Vi
+        imag_deriv = sympy.diff(self.Lgr, "v{}".format(v_node_i))
+        real_deriv = sympy.diff(self.Lgr, "v{}".format(v_node_r))
+        
         print("load: vr index:{} vi index:{}".format(v_node_r, v_node_i))
-        print("real derivative", sympy.diff(self.Lgr, "v{}".format(v_node_r)))
-        print("imaginary derivative", sympy.diff(self.Lgr, "v{}".format(v_node_i)))
+        print("real derivative", imag_deriv)
+        print("imaginary derivative", real_deriv)
+        
+        print("second imaginary derivative", sympy.diff(imag_deriv,"v{}".format(v_node_i)))
+        print("second real derivative", sympy.diff(real_deriv,"v{}".format(v_node_r)))
