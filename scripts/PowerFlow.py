@@ -20,9 +20,9 @@ def print_matrix(matrix, width = 4):
                 # account for negative signs
                 neg_flag = (item < 0)
                 if (neg_flag):
-                    int_width = int(np.floor(np.log10(item*-1)))   
+                    int_width = max(0,int(np.floor(np.log10(item*-1)))) 
                 else:
-                    int_width = int(np.floor(np.log10(item)))
+                    int_width = max(0,int(np.floor(np.log10(item))))
                     
                 decimal_places = '{}'.format(max(0, width - neg_flag - int_width))
             else:
@@ -305,8 +305,9 @@ class PowerFlow:
                       load,
                       injection):
         
-        def plot_matrix(matrix):
+        def plot_matrix(matrix, str = ""):
             plt.imshow(matrix)
+            plt.title(str)
             plt.show()
         
         n_bus = 0
@@ -359,15 +360,12 @@ class PowerFlow:
         
         Y_linear, J_linear = (self.Y, self.J)
         
-        print("linear Y", Y_linear)
-        
         # CREATE J_linear
         
         
         # initialize feasibility analysis matrices
         
-        
-        plot_matrix(Y_linear)
+        plot_matrix(Y_linear, "Y matrix after linear H stamps")
     
         # # # Set Hyper-parameters
         tol = self.tol # chosen NR tolerance
@@ -387,14 +385,16 @@ class PowerFlow:
             self.J[v_size - x_size:v_size] = self.lower_J
             
             # # stamping upper part of Y matrix
+            for comp in load:
+                self.Y, self.J = comp.stamp_dual(self.Y, self.J, v_sol, self.size_y)
             
-            plot_matrix(self.Y)
+            plot_matrix(self.Y, "Y matrix after dual stamps")
             print_matrix(self.Y)
             print("J array", self.J)
             
             # # # Solve The System # # #
             prev_v_sol = v_sol
-            #v_sol = self.solve(self.Y, self.J, v_sol)
+            v_sol = self.solve(self.Y, self.J, v_sol)
 
             # # # Compute The Error at the current NR iteration # # #
             
@@ -408,6 +408,7 @@ class PowerFlow:
             print("NR iteration: {}".format(NR_count))
             prev_v_sol = v_sol            
             NR_count = NR_count + 1
+            
         
         return v_sol, NR_count
 
@@ -433,6 +434,10 @@ class PowerFlow:
         print("Lagrangian: {}".format(self.Lgr))
         #print("After substitution: {}".format(self.Lgr.subs(self.symb_dict)))
         
+        #print("Buses map", Buses.bus_map)
+        #for _,i in Buses.bus_map.items():
+        #    print("r",i.node_Vr)
+        #    print("i",i.node_Vi)
         
         test_comp = generator[0]
         v_node_r = Buses.bus_map[test_comp.Bus].node_Vr

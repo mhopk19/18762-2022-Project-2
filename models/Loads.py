@@ -4,6 +4,7 @@ from models.Buses import Buses
 import math
 import scripts.global_vars as gv
 
+import sympy
 from sympy import Symbol
 
 
@@ -86,6 +87,17 @@ class Loads:
         denom = (Vrl**2 + Vil**2)
         return num/denom
     
+    # dual expressions
+    
+    def IIrl(self,Vrl,Vil,L_r,L_i):
+        LpQ = L_r * (self.Irl(Vrl,Vil)) + L_i * (self.Iil(Vrl,Vil))
+        return sympy.diff(LpQ, Vrl)
+        
+    def IIil(self,Vrl,Vil,L_r,L_i):
+        LpQ = L_r * (self.Irl(Vrl,Vil)) + L_i * (self.Iil(Vrl,Vil))
+        return sympy.diff(LpQ, Vil)
+        
+    
     def stamp(self, Y, J, prev_v):
         
         v_node_r = Buses.bus_map[self.Bus].node_Vr
@@ -132,3 +144,87 @@ class Loads:
         dict['Ql{}'.format(self.id)] = self.Q
         
         return dict
+    
+    def stamp_dual(self, Y, J, prev_sol, size_Y):
+        dict = {}
+        x_ind_end = size_Y - 2 * (self.Bus) - 1
+        v_node_r = Buses.bus_map[self.Bus].node_Vr
+        v_node_i = Buses.bus_map[self.Bus].node_Vi
+        l_node_r = 2 * (self.Bus - 1) 
+        l_node_i = 2 * (self.Bus - 1) + 1
+        
+        print("stamps for Load:{}".format(self.id))
+        
+        dict["v_r"] = (sympy.Symbol("v_r"), prev_sol[v_node_r])
+        dict["v_i"] = (sympy.Symbol("v_i"), prev_sol[v_node_i])
+        dict["l_r"] = (sympy.Symbol("l_r"), prev_sol[l_node_r])
+        dict["l_i"] = (sympy.Symbol("l_i"), prev_sol[l_node_i])
+        
+        # historical value calculations
+        prev_IIrl = self.IIrl(dict["v_r"][0], dict["v_i"][0], dict["l_r"][0], dict["l_i"][0])
+        prev_IIil = self.IIil(dict["v_r"][0], dict["v_i"][0], dict["l_r"][0], dict["l_i"][0])
+        
+        Beta_rk = self.IIrl(dict["v_r"][0], dict["v_i"][0], dict["l_r"][0], dict["l_i"][0]) - \
+                dict["l_r"][0] * sympy.diff(prev_IIrl, dict["l_r"][0]) - \
+                dict["l_i"][0] * sympy.diff(prev_IIrl, dict["l_i"][0]) - \
+                dict["v_r"][0] * sympy.diff(prev_IIrl, dict["v_r"][0]) - \
+                dict["v_i"][0] * sympy.diff(prev_IIrl, dict["v_i"][0])
+                
+        Beta_ik = self.IIil(dict["v_r"][0], dict["v_i"][0], dict["l_r"][0], dict["l_i"][0]) - \
+                dict["l_r"][0] * sympy.diff(prev_IIil, dict["l_r"][0]) - \
+                dict["l_i"][0] * sympy.diff(prev_IIil, dict["l_i"][0]) - \
+                dict["v_r"][0] * sympy.diff(prev_IIil, dict["v_r"][0]) - \
+                dict["v_i"][0] * sympy.diff(prev_IIil, dict["v_i"][0])
+        
+        # Real Stamps
+        
+        # real
+        lambda_rr_next = sympy.diff(prev_IIrl, dict["l_r"][0])
+        lambda_ri_next = sympy.diff(prev_IIrl, dict["l_i"][0])
+        v_rr_next = sympy.diff(prev_IIrl, dict["v_r"][0])
+        v_ri_next = sympy.diff(prev_IIrl, dict["v_i"][0])
+        
+        # imaginary
+        lambda_ir_next = sympy.diff(prev_IIil, dict["l_r"][0])
+        lambda_ii_next = sympy.diff(prev_IIil, dict["l_i"][0])
+        v_ir_next = sympy.diff(prev_IIil, dict["v_r"][0])
+        v_ii_next = sympy.diff(prev_IIil, dict["v_i"][0])
+        
+        for i,item in dict.items():
+            Beta_rk = Beta_rk.subs(item[0], item[1])
+            Beta_ik = Beta_ik.subs(item[0], item[1])
+            
+            lambda_rr_next = lambda_rr_next.subs(item[0], item[1])
+            lambda_ri_next = lambda_ri_next.subs(item[0], item[1])
+            v_rr_next = v_rr_next.subs(item[0], item[1])
+            v_ri_next = v_ri_next.subs(item[0], item[1])
+
+            lambda_ir_next = lambda_ir_next.subs(item[0], item[1])
+            lambda_ii_next = lambda_ii_next.subs(item[0], item[1])
+            v_ir_next = v_ir_next.subs(item[0], item[1])
+            v_ii_next = v_ii_next.subs(item[0], item[1])
+            
+        print("Beta_rk", Beta_rk) 
+        print("Beta_ik", Beta_ik)
+        print("stamps for r row:l_r term {}\nl_i term {}\nv_r term {}\nv_i term {}".format(lambda_rr_next,
+                                                                                lambda_ri_next,
+                                               v_rr_next, v_ri_next))
+        print("stamps for i row:l_r term {}\nl_i term {}\nv_r term {}\nv_i term {}".format(lambda_ir_next, 
+                                                                                       lambda_ii_next,
+                                               v_ir_next, v_ii_next))
+        
+        Y[l_node_r][x_ind_end + l_node_r] += lambda_rr_next
+        Y[l_node_r][x_ind_end + l_node_i] += lambda_ri_next
+        Y[l_node_r][v_node_r] += v_rr_next
+        Y[l_node_r][v_node_i] += v_ri_next
+        
+        Y[l_node_r][x_ind_end + l_node_r] += lambda_ir_next
+        Y[l_node_r][x_ind_end + l_node_i] += lambda_ii_next
+        Y[l_node_r][v_node_r] += v_ir_next
+        Y[l_node_r][v_node_i] += v_ii_next
+        
+        J[l_node_r] += Beta_rk
+        J[l_node_i] += Beta_ik
+
+        return Y, J
+         

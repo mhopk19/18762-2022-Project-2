@@ -107,7 +107,7 @@ def solve(TESTCASE, SETTINGS):
     #  condition once you've finished building your solver.
     if (feasibility):
         v, nr_count = powerflow.run_feasibility_powerflow(v_init, bus, slack, generator, transformer, branch, shunt, load, injection)
-        powerflow.analyze_system(v_init, bus, slack, generator, transformer,branch, shunt, load, injection)
+        #powerflow.analyze_system(v_init, bus, slack, generator, transformer,branch, shunt, load, injection)
     else:
         v, nr_count = powerflow.run_powerflow(v_init, bus, slack, generator, transformer, branch, shunt, load)
 
