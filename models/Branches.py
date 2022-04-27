@@ -51,25 +51,34 @@ class Branches:
         self.rateC = rateC
         
         
-    def diagonal_stamp(self, Y, J, from_node, to_node):
-        Y[from_node ][from_node ] += self.G
-        Y[from_node ][to_node ] += -self.B
-        Y[to_node ][from_node ] += self.B
-        Y[to_node ][to_node ] += self.G
+    def diagonal_stamp(self, Y, J, from_node, to_node, x_offset = 0, y_offset = 0, 
+                       dual_sign = False):
+        
+        dual_sign = -1 * (dual_sign) + (dual_sign == False)
+        
+        Y[from_node + y_offset][from_node + x_offset] += self.G
+        Y[from_node + y_offset][to_node + x_offset] += -self.B * dual_sign
+        Y[to_node + y_offset][from_node + x_offset] += self.B * dual_sign
+        Y[to_node + y_offset][to_node + x_offset] += self.G
+        
         return Y, J
     
-    def off_diagonal_stamp(self,Y,J,a,b,c,d):
+    def off_diagonal_stamp(self,Y,J,a,b,c,d, x_offset = 0, y_offset = 0,
+                           dual_sign = False):
         # nodes a,b,c,d make a square as so:
         # [a][c] | [a][d]
         # ---------------
         # [b][c] | [b][d]
-        Y[a][c] += -self.G
-        Y[a][d] += self.B
-        Y[b][c] += -self.B
-        Y[b][d] += -self.G
+        dual_sign = -1 * (dual_sign) + (dual_sign == False)
+        
+        Y[a + y_offset][c + x_offset] += -self.G
+        Y[a + y_offset][d + x_offset] += self.B * dual_sign
+        Y[b + y_offset][c + x_offset] += -self.B * dual_sign
+        Y[b + y_offset][d + x_offset] += -self.G
+        
         return Y, J
     
-    def stamp(self, Y, J, x_offset = 0, y_offset = 0):
+    def stamp(self, Y, J):
         # diagonal stamp blocks
         Y, J = self.diagonal_stamp(Y,J,Buses.bus_map[self.from_bus].node_Vr,
                                    Buses.bus_map[self.from_bus].node_Vi)
@@ -89,6 +98,35 @@ class Branches:
                                    Buses.bus_map[self.from_bus].node_Vi)    
         
         return Y,J    
+    
+    def stamp_dual(self, Y, J, size_Y):
+        x_ind_end = size_Y - 2 * (len(Buses.bus_map))
+        l_from_vr = 2 * (self.from_bus - 1)
+        l_from_vi = 2 * (self.from_bus - 1) + 1
+        l_to_vr = 2 * (self.to_bus - 1)
+        l_to_vi = 2 * (self.to_bus - 1) + 1
+        
+        # diagonal stamp blocks
+        Y, J = self.diagonal_stamp(Y,J, l_from_vr,
+                                   l_from_vi, x_offset = x_ind_end, dual_sign = True)
+        
+        Y, J = self.diagonal_stamp(Y,J, l_to_vr,
+                                   l_to_vi, x_offset = x_ind_end, dual_sign = True)
+        # off-diagonal stamp blocks
+        # top right
+        Y, J = self.off_diagonal_stamp(Y,J, l_from_vr,
+                                   l_from_vi,
+                                   l_to_vr,
+                                   l_to_vi,
+                                   x_offset = x_ind_end, dual_sign = True)
+        # bottom left
+        Y, J = self.off_diagonal_stamp(Y,J, l_to_vr,
+                                   l_to_vi,
+                                   l_from_vr,
+                                   l_from_vi,
+                                   x_offset = x_ind_end, dual_sign = True)
+        
+        return Y,J  
         
     def get_lagrange(self, symb_v, symb_lambda):
         # branch goes from node k to node m

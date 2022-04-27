@@ -356,6 +356,12 @@ class PowerFlow:
         self.J[v_size - x_size:v_size] = lower_J_linear
         
         
+        # linear dual stamps
+        
+        for comp in branch:
+            self.Y, self.J = comp.stamp_dual(self.Y, self.J, self.size_y)        
+        
+        
         # Lagrangian Hessian !!
         
         Y_linear, J_linear = (self.Y, self.J)
@@ -372,6 +378,8 @@ class PowerFlow:
         NR_count = 0  # current NR iteration
         err_max = np.inf # initial error to start loop
         while (err_max > tol and (NR_count < self.max_iters)):
+            
+            self.Y, self.J = (Y_linear, J_linear)
             # # # ADDING THE NON-LINEAR COMPONENTS
             
             # # stamping H component of Y matrix
@@ -390,7 +398,7 @@ class PowerFlow:
             
             plot_matrix(self.Y, "Y matrix after dual stamps")
             print_matrix(self.Y)
-            print("J array", self.J)
+            print("v sol", v_sol)
             
             # # # Solve The System # # #
             prev_v_sol = v_sol
@@ -399,12 +407,12 @@ class PowerFlow:
             # # # Compute The Error at the current NR iteration # # #
             
             err_max = 0
-            #err_max = self.check_error(self.Y, self.J, v_sol)
+            err_max = self.check_error(self.Y, self.J, v_sol)
             
             #print("max error at iteration:{}".format(err_max))
             #print("solution vector: {}".format(v_sol))
 
-            
+            print("Bus map size", len(Buses.bus_map))
             print("NR iteration: {}".format(NR_count))
             prev_v_sol = v_sol            
             NR_count = NR_count + 1

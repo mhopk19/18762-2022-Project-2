@@ -147,7 +147,7 @@ class Loads:
     
     def stamp_dual(self, Y, J, prev_sol, size_Y):
         dict = {}
-        x_ind_end = size_Y - 2 * (self.Bus) - 1
+        x_ind_end = size_Y - 2 * (self.Bus)
         v_node_r = Buses.bus_map[self.Bus].node_Vr
         v_node_i = Buses.bus_map[self.Bus].node_Vi
         l_node_r = 2 * (self.Bus - 1) 
