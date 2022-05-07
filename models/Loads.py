@@ -53,27 +53,40 @@ class Loads:
         
     def dIrl_dVrl(self,Vrl,Vil):
         assert (Vrl!=0 or Vil!=0)
-        term1 = self.P/(Vrl**2 + Vil**2)
-        term2 = -(2*Vrl*(self.P*Vrl + self.Q*Vil))/(Vrl**2 + Vil**2)**2
-        return term1 + term2
+        #term1 = self.P/(Vrl**2 + Vil**2)
+        #term2 = -(2*Vrl*(self.P*Vrl + self.Q*Vil))/(Vrl**2 + Vil**2)**2
+        #return term1 + term2
+        num = (self.P*(Vil**2 - Vrl**2) - 2 * self.Q*Vrl*Vil)
+        denom = (Vrl**2 + Vil**2)**2
+        return num / denom
     
     def dIrl_dVil(self,Vrl,Vil):
         assert (Vrl!=0 or Vil!=0)
-        term1 = self.Q/(Vrl**2 + Vil**2)
-        term2 = -(2*Vil*(self.P*Vrl + self.Q*Vil))/(Vrl**2 + Vil**2)**2
-        return term1 + term2
+        #term1 = self.Q/(Vrl**2 + Vil**2)
+        #term2 = -(2*Vil*(self.P*Vrl + self.Q*Vil))/(Vrl**2 + Vil**2)**2
+        #return term1 + term2
+        num = (self.P*(Vil**2 - Vrl**2) - 2 * self.Q*Vrl*Vil)
+        denom = (Vrl**2 + Vil**2)**2
+        return num / denom
+        
     
     def dIil_dVrl(self,Vrl,Vil):
         assert (Vrl!=0 or Vil!=0)
-        term1 = -self.Q/(Vrl**2 + Vil**2)
-        term2 = -(2*Vrl*(self.P*Vil - self.Q*Vrl))/(Vrl**2 + Vil**2)**2
-        return term1 + term2
+        #term1 = -self.Q/(Vrl**2 + Vil**2)
+        #term2 = -(2*Vrl*(self.P*Vil - self.Q*Vrl))/(Vrl**2 + Vil**2)**2
+        #return term1 + term2
+        num = (self.P*(Vil**2 - Vrl**2) - 2 * self.Q*Vrl*Vil)
+        denom = (Vrl**2 + Vil**2)**2
+        return num / denom
     
     def dIil_dVil(self,Vrl,Vil):
         assert (Vrl!=0 or Vil!=0)
-        term1 = self.P/(Vrl**2 + Vil**2)
-        term2 = -(2*Vil*(self.P*Vil - self.Q*Vrl))/(Vrl**2 + Vil**2)**2
-        return term1 + term2
+        #term1 = self.P/(Vrl**2 + Vil**2)
+        #term2 = -(2*Vil*(self.P*Vil - self.Q*Vrl))/(Vrl**2 + Vil**2)**2
+        #return term1 + term2
+        num = -(self.P*(Vil**2 - Vrl**2) - 2 * self.Q*Vrl*Vil)
+        denom = (Vrl**2 + Vil**2)**2
+        return num / denom
     
     def Irl(self,Vrl,Vil):
         assert (Vrl!=0 or Vil!=0)
@@ -111,13 +124,13 @@ class Loads:
         
         # historical values
         # Vrl
-        J[v_node_r ] -= self.Irl(prev_v[v_node_r],prev_v[v_node_i]) - \
-            self.dIrl_dVrl(prev_v[v_node_r],prev_v[v_node_i]) * prev_v[v_node_r] -\
+        J[v_node_r ] += -self.Irl(prev_v[v_node_r],prev_v[v_node_i]) + \
+            self.dIrl_dVrl(prev_v[v_node_r],prev_v[v_node_i]) * prev_v[v_node_r] +\
             self.dIrl_dVil(prev_v[v_node_r],prev_v[v_node_i]) * prev_v[v_node_i]
             
         # Vil
-        J[v_node_i ] -= self.Iil(prev_v[v_node_r],prev_v[v_node_i]) - \
-            self.dIil_dVrl(prev_v[v_node_r],prev_v[v_node_i]) * prev_v[v_node_r] -\
+        J[v_node_i ] += -self.Iil(prev_v[v_node_r],prev_v[v_node_i]) - \
+            self.dIil_dVrl(prev_v[v_node_r],prev_v[v_node_i]) * prev_v[v_node_r] +\
             self.dIil_dVil(prev_v[v_node_r],prev_v[v_node_i]) * prev_v[v_node_i]
             
         return Y, J
@@ -145,14 +158,16 @@ class Loads:
         
         return dict
     
-    def stamp_dual(self, Y, J, prev_sol, size_Y):
+    def stamp_dual(self, Y, J, prev_sol, size_Y, print_terms = False):
         dict = {}
-        x_ind_end = size_Y - 2 * (self.Bus)
+        x_ind_end = Buses.lambda_v_start
         v_node_r = Buses.bus_map[self.Bus].node_Vr
         v_node_i = Buses.bus_map[self.Bus].node_Vi
-        l_node_r = 2 * (self.Bus - 1) 
-        l_node_i = 2 * (self.Bus - 1) + 1
+        l_node_r = Buses.bus_map[self.Bus].lambda_Vr 
+        l_node_i = Buses.bus_map[self.Bus].lambda_Vi
         
+        print("Load dual stamp nodes vr:{} vi:{} lr:{} li:{}".format(v_node_r, v_node_i,
+                                                                     l_node_r, l_node_i))
         print("stamps for Load:{}".format(self.id))
         
         dict["v_r"] = (sympy.Symbol("v_r"), prev_sol[v_node_r])
@@ -204,27 +219,28 @@ class Loads:
             v_ir_next = v_ir_next.subs(item[0], item[1])
             v_ii_next = v_ii_next.subs(item[0], item[1])
             
-        print("Beta_rk", Beta_rk) 
-        print("Beta_ik", Beta_ik)
-        print("stamps for r row:l_r term {}\nl_i term {}\nv_r term {}\nv_i term {}".format(lambda_rr_next,
-                                                                                lambda_ri_next,
-                                               v_rr_next, v_ri_next))
-        print("stamps for i row:l_r term {}\nl_i term {}\nv_r term {}\nv_i term {}".format(lambda_ir_next, 
-                                                                                       lambda_ii_next,
-                                               v_ir_next, v_ii_next))
+        if (print_terms):
+            print("Beta_rk", Beta_rk) 
+            print("Beta_ik", Beta_ik)
+            print("stamps for r row:l_r term {}\nl_i term {}\nv_r term {}\nv_i term {}".format(lambda_rr_next,
+                                                                                    lambda_ri_next,
+                                                   v_rr_next, v_ri_next))
+            print("stamps for i row:l_r term {}\nl_i term {}\nv_r term {}\nv_i term {}".format(lambda_ir_next, 
+                                                                                           lambda_ii_next,
+                                                   v_ir_next, v_ii_next))
+            
+        Y[v_node_r][l_node_r] += lambda_rr_next
+        Y[v_node_r][l_node_i] += lambda_ri_next
+        Y[v_node_r][v_node_r] += v_rr_next
+        Y[v_node_r][v_node_i] += v_ri_next
         
-        Y[l_node_r][x_ind_end + l_node_r] += lambda_rr_next
-        Y[l_node_r][x_ind_end + l_node_i] += lambda_ri_next
-        Y[l_node_r][v_node_r] += v_rr_next
-        Y[l_node_r][v_node_i] += v_ri_next
+        Y[v_node_i][l_node_r] += lambda_ir_next
+        Y[v_node_i][l_node_i] += lambda_ii_next
+        Y[v_node_i][v_node_r] += v_ir_next
+        Y[v_node_i][v_node_i] += v_ii_next
         
-        Y[l_node_r][x_ind_end + l_node_r] += lambda_ir_next
-        Y[l_node_r][x_ind_end + l_node_i] += lambda_ii_next
-        Y[l_node_r][v_node_r] += v_ir_next
-        Y[l_node_r][v_node_i] += v_ii_next
-        
-        J[l_node_r] += Beta_rk
-        J[l_node_i] += Beta_ik
+        J[v_node_r] += Beta_rk
+        J[v_node_i] += Beta_ik
 
         return Y, J
          

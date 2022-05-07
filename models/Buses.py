@@ -1,6 +1,7 @@
 from __future__ import division
 from itertools import count
 import numpy as np
+from ast import iter_child_nodes
 
 
 class Buses:
@@ -12,6 +13,8 @@ class Buses:
     all_bus_key_ = {}
     # creates a static bus mapping that all classes can use to map buses to nodes
     bus_map = {}
+    
+    lambda_v_start = None
 
     def __init__(self,
                  Bus,
@@ -31,6 +34,11 @@ class Buses:
 
         self.Bus = Bus
         self.Type = Type
+
+        self.Vm_init = Vm_init
+        self.Va_init = Va_init
+        self.Vr_init = Vm_init*np.cos(Va_init*np.pi/180)
+        self.Vi_init = Vm_init*np.sin(Va_init*np.pi/180)
 
         # initialize all nodes
         self.node_Vr = None  # real voltage node at a bus
@@ -64,3 +72,20 @@ class Buses:
             self.node_Vr = self._node_index.__next__()
             self.node_Vi = self._node_index.__next__()
             self.node_Q = self._node_index.__next__()
+
+    
+    def assign_lambda_nodes(self):
+        """
+        Assign lambda nodes
+        Returns: None
+        """
+        # If Slack or PQ Bus
+        if self.Type == 1 or self.Type == 3:
+            self.lambda_Vr = self._node_index.__next__()
+            self.lambda_Vi = self._node_index.__next__()
+
+        # If PV Bus
+        elif self.Type == 2:
+            self.lambda_Vr = self._node_index.__next__()
+            self.lambda_Vi = self._node_index.__next__()
+            self.lambda_Q = self._node_index.__next__()

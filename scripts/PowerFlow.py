@@ -4,6 +4,7 @@ import scipy
 import scipy.sparse as sp
 import scripts.sparse_matrices as spm
 import scripts.sparse_matrices as sm
+import copy
 
 import sympy
 from sympy import symbols
@@ -31,8 +32,6 @@ def print_matrix(matrix, width = 4):
             substr = '{:.'+decimal_places+'f} '
             str = str+substr.format(item)
         print(str)
-    #print('\n'.join([''.join(['{:.5f}'.format(item) for item in row]) 
-    #            for row in matrix_list]))
 
 
 class PowerFlow:
@@ -67,7 +66,6 @@ class PowerFlow:
         self.J = None
         self.size_y = size_y
         
-        self.bus_map = {} # tuple mapping from integer number to bus
 
         # need a log of the partials for calculations
         # load: real: Irl/Vrl, Irl/Vil PV bus imag: Iil/Vrl, Iil/Vil
@@ -106,9 +104,10 @@ class PowerFlow:
         else:
             rounded_y = np.round(np.matrix(Y).tolist(),2)
             rounded_y = Y
-            
             v_new = init_v - np.linalg.inv(Y) @ (Y @ init_v - J)
-        # calculate information for determining residuals
+            #v_new = np.linalg.solve(Y, J)
+            print("v new", v_new)
+            # calculate information for determining residuals
             return v_new
 
     def apply_limiting(self, v_sol, prev_v_sol, voltage_devices):
@@ -154,7 +153,7 @@ class PowerFlow:
         else:
             return new_v
 
-    def check_error(self, Y, J, v_sol):
+    def check_error(self, Y, J, v_sol, prev_v):
         if (self.sparse == True):
             Y.generate_matrix_from_sparse()
             J.generate_matrix_from_sparse()
@@ -170,6 +169,7 @@ class PowerFlow:
             #print("J", J)
             err_vector = (Y @ v_sol) - J
             err_max = np.max(err_vector)
+            err_max = np.amax(np.abs(prev_v - v_sol))
             return err_max        
 
     def get_hist_vars(self):
@@ -232,14 +232,12 @@ class PowerFlow:
             v(np.array): The final solution vector.
 
         """
-        # create bus mapping
-        for b in bus:
-            self.bus_map[b.Bus] = b
 
         step = 0
         
         # # # Copy v_init into the Solution Vectors used during NR, v, and the final solution vector v_sol # # #
         v = np.copy(v_init)
+        prev_v = v
         v_sol = np.copy(v)
         if (self.sparse == True):
             v_sol = sm.sparse_vector(arr = v_init)
@@ -254,7 +252,7 @@ class PowerFlow:
             self.Y, self.J = comp.stamp(self.Y, self.J)
         
         # linear stamps which can be used as the starting point in NR iterations
-        linear_stamps = (self.Y, self.J)
+        linear_stamps = (copy.deepcopy(self.Y), copy.deepcopy(self.J))
         
         # # # Initialize While Loop (NR) Variables # # #
         err_max = np.inf  # maximum error at the current NR iteration
@@ -264,18 +262,32 @@ class PowerFlow:
         # TODO: PART 1, STEP 2.3 - Complete the NR While Loop
         while (err_max > tol and (NR_count < self.max_iters)):
             print("NR iteration: {}".format(NR_count))
-            self.Y, self.J = linear_stamps
+            self.reset_stamps(v_size)
+            self.Y = self.Y + linear_stamps[0]
+            self.J = self.J + linear_stamps[1]
+            #self.Y, self.J = linear_stamps
+            
+            print("linear matrix")
+            print_matrix(self.Y, width=3)
             
             # # # Stamp Nonlinear Power Grid Elements into Y matrix # # #
             for comp in load + generator:
                 self.Y, self.J = comp.stamp(self.Y, self.J, v_sol)
 
+            print("print the Y matrix for debugging")
+            print_matrix(self.Y, width = 3)
+            print("J for debugging")
+            for row in iter(self.J):
+                print(row)
+            print()
+
             # # # Solve The System # # #
-            prev_v_sol = v_sol
+            #prev_v_sol = np.copy(v)
             v_sol = self.solve(self.Y, self.J, v_sol)
 
             # # # Compute The Error at the current NR iteration # # #
-            err_max = self.check_error(self.Y, self.J, v_sol)
+            err_max = self.check_error(self.Y, self.J, v_sol, prev_v)
+            #err_max = np.amax(np.abs(prev_v_sol - v_sol))
             print("max error at iteration:{}".format(err_max))
             #print("solution vector: {}".format(v_sol))
 
@@ -287,9 +299,10 @@ class PowerFlow:
                 if (self.enable_limiting):
                     v_sol = self.apply_limiting(v_sol, prev_v_sol, generator + slack + load)
                     err_max = self.check_error(self.Y, self.J, v_sol)
+                
             
             print("NR iteration", NR_count)
-            prev_v_sol = v_sol            
+            prev_v = np.copy(v_sol)            
             NR_count = NR_count + 1
 
         return v_sol, NR_count
@@ -314,19 +327,20 @@ class PowerFlow:
         # create bus mapping
         for b in bus:
             n_bus = n_bus + 1
-            self.bus_map[b.Bus] = b
 
         step = 0
         
         # # # Copy v_init into the Solution Vectors used during NR, v, and the final solution vector v_sol # # #
         v = np.copy(v_init)
         v_sol = np.copy(v)
+        prev_v = v
+        
         if (self.sparse == True):
             v_sol = sm.sparse_vector(arr = v_init)
         # actual v_size is different than size of the full matrix due to feasibility currents
         v_size = self.size_y 
-        x_size = self.size_y - (2 * n_bus)
-        lambda_size = (2 * n_bus)
+        x_size = int(self.size_y/2)
+        lambda_size = int(self.size_y/2)
         
         self.solution_v = np.copy(v)
 
@@ -358,8 +372,9 @@ class PowerFlow:
         
         # linear dual stamps
         
-        for comp in branch:
-            self.Y, self.J = comp.stamp_dual(self.Y, self.J, self.size_y)        
+        self.Y[0:x_size, v_size - x_size:v_size] = H_grad_linear.transpose()
+        #for comp in branch + slack:
+        #    self.Y, self.J = comp.stamp_dual(self.Y, self.J, self.size_y)        
         
         
         # Lagrangian Hessian !!
@@ -378,8 +393,9 @@ class PowerFlow:
         NR_count = 0  # current NR iteration
         err_max = np.inf # initial error to start loop
         while (err_max > tol and (NR_count < self.max_iters)):
-            
-            self.Y, self.J = (Y_linear, J_linear)
+            self.reset_stamps_feasibility(v_size, x_size)
+            self.Y = self.Y + Y_linear
+            self.J = self.J + J_linear
             # # # ADDING THE NON-LINEAR COMPONENTS
             
             # # stamping H component of Y matrix
@@ -393,7 +409,7 @@ class PowerFlow:
             self.J[v_size - x_size:v_size] = self.lower_J
             
             # # stamping upper part of Y matrix
-            for comp in load:
+            for comp in load + generator:
                 self.Y, self.J = comp.stamp_dual(self.Y, self.J, v_sol, self.size_y)
             
             plot_matrix(self.Y, "Y matrix after dual stamps")
@@ -401,61 +417,21 @@ class PowerFlow:
             print("v sol", v_sol)
             
             # # # Solve The System # # #
-            prev_v_sol = v_sol
             v_sol = self.solve(self.Y, self.J, v_sol)
 
             # # # Compute The Error at the current NR iteration # # #
             
             err_max = 0
-            err_max = self.check_error(self.Y, self.J, v_sol)
+            err_max = self.check_error(self.Y, self.J, v_sol, prev_v)
             
             #print("max error at iteration:{}".format(err_max))
             #print("solution vector: {}".format(v_sol))
 
             print("Bus map size", len(Buses.bus_map))
             print("NR iteration: {}".format(NR_count))
-            prev_v_sol = v_sol            
+            prev_v = np.copy(v_sol)            
             NR_count = NR_count + 1
             
         
         return v_sol, NR_count
 
-
-    def analyze_system(self, v_init, bus, slack, generator, transformer,
-                       branch, shunt, load, injection):
-        v = v_init
-        v_size = len(v_init)
-        lambda_size = 2 * len(bus)
-        # feasibility calculations
-        components = branch + generator + load
-        self.symb_v = symbols('v:{}'.format(v_size))
-        self.symb_lambda = symbols('l:{}'.format(lambda_size))
-        self.Lgr = 0
-        
-        for comp in [generator[0]]:
-            self.Lgr = self.Lgr + comp.get_lagrange(self.symb_v, self.symb_lambda)
-        
-        # update dictionary
-        for comp in [generator[0]]:
-            self.symb_dict = comp.update_symbols(self.symb_dict, v)
-            
-        print("Lagrangian: {}".format(self.Lgr))
-        #print("After substitution: {}".format(self.Lgr.subs(self.symb_dict)))
-        
-        #print("Buses map", Buses.bus_map)
-        #for _,i in Buses.bus_map.items():
-        #    print("r",i.node_Vr)
-        #    print("i",i.node_Vi)
-        
-        test_comp = generator[0]
-        v_node_r = Buses.bus_map[test_comp.Bus].node_Vr
-        v_node_i = Buses.bus_map[test_comp.Bus].node_Vi
-        imag_deriv = sympy.diff(self.Lgr, "v{}".format(v_node_i))
-        real_deriv = sympy.diff(self.Lgr, "v{}".format(v_node_r))
-        
-        print("load: vr index:{} vi index:{}".format(v_node_r, v_node_i))
-        print("real derivative", imag_deriv)
-        print("imaginary derivative", real_deriv)
-        
-        print("second imaginary derivative", sympy.diff(imag_deriv,"v{}".format(v_node_i)))
-        print("second real derivative", sympy.diff(real_deriv,"v{}".format(v_node_r)))

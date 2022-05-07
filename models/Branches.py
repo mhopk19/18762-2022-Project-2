@@ -41,8 +41,15 @@ class Branches:
         self.to_bus = to_bus
         self.r = r
         self.x = x
-        self.b = 1/self.x
+        self.b = b
         self.g = 1/self.r
+        
+        if abs(self.x) < 1e-6:
+            if self.x < 0:
+                self.x = -1e-6
+            else:
+                self.x = 1e-6
+                
         self.G = self.r/(self.r**2 + self.x**2)
         self.B = -self.x/(self.r**2 + self.x**2)
         self.status = status
@@ -79,7 +86,42 @@ class Branches:
         return Y, J
     
     def stamp(self, Y, J):
+        if not self.status:
+            return Y, J
         # diagonal stamp blocks
+        vr_from = Buses.bus_map[self.from_bus].node_Vr
+        vi_from = Buses.bus_map[self.from_bus].node_Vi
+        vr_to = Buses.bus_map[self.to_bus].node_Vr
+        vi_to = Buses.bus_map[self.to_bus].node_Vi
+        
+        Y[vr_from][vi_from] += -self.B
+        Y[vr_from][vi_to] += self.B
+        Y[vi_from][vr_from] += self.B
+        Y[vi_from][vr_to] += -self.B
+        
+        Y[vr_to][vi_to] += -self.B
+        Y[vr_to][vi_from] += self.B
+        Y[vi_to][vr_to] += self.B
+        Y[vi_to][vr_from] += -self.B
+        
+        Y[vr_from][vi_from] += -self.b/2
+        Y[vi_from][vr_from] += self.b/2
+        Y[vr_to][vi_to] += -self.b/2
+        Y[vi_to][vr_to] += self.b/2
+        
+        if self.r == 0:
+            return Y, J
+        
+        Y[vr_from][vr_from] += self.G
+        Y[vi_from][vi_from] += self.G
+        Y[vr_to][vr_to] += self.G
+        Y[vi_to][vi_to] += self.G
+        
+        Y[vr_from][vr_to] += -self.G
+        Y[vi_from][vi_to] += -self.G
+        Y[vr_to][vr_from] += -self.G
+        Y[vi_to][vi_from] += -self.G        
+        """
         Y, J = self.diagonal_stamp(Y,J,Buses.bus_map[self.from_bus].node_Vr,
                                    Buses.bus_map[self.from_bus].node_Vi)
         
@@ -96,6 +138,7 @@ class Branches:
                                    Buses.bus_map[self.to_bus].node_Vi,
                                    Buses.bus_map[self.from_bus].node_Vr,
                                    Buses.bus_map[self.from_bus].node_Vi)    
+        """
         
         return Y,J    
     

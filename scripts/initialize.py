@@ -1,10 +1,35 @@
 import numpy as np
 from models.Buses import Buses
 
-def initialize(size_Y, voltage_components, bus, feasibility = False):
-    # initial conditions for GS-4
-    #v = [1., 0., 1., 0., 1., 0., 1., 0., 0., 0., 0.]  
+def initialize(size_Y, bus, generator, slack, flat_start = False, feasibility = False):
     
+    v = np.zeros(size_Y, dtype=np.float)
+    if flat_start:
+        for ele in bus:
+            v[ele.node_Vr] = 1
+            v[ele.node_Vi] = 0
+        for ele in generator:
+            v[ele.node_Q] += (ele.Qmax+ele.Qmin)/2
+        # leave slack currents initialized as 0?
+    else:
+        for ele in bus:
+            v[ele.node_Vr] = ele.Vr_init
+            v[ele.node_Vi] = ele.Vi_init
+        for ele in generator:
+            v[ele.node_Q] += -ele.Qinit
+        for ele in slack:
+            v[ele.node_Ir] = ele.Ir_init
+            v[ele.node_Ii] = ele.Ii_init
+    
+    
+    
+    if (feasibility):
+        lambda_current_epsilon = 0.001
+        for b in bus:
+            v[b.lambda_Vr] = lambda_current_epsilon
+            v[b.lambda_Vr] = lambda_current_epsilon
+    
+    """
     v = np.zeros(size_Y)
     
     # FLAT START conditions
@@ -25,5 +50,5 @@ def initialize(size_Y, voltage_components, bus, feasibility = False):
         
         for i in range(n_comps,size_Y):
             v[i] = slack_current_epsilon
-    
+    """
     return v

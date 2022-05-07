@@ -49,22 +49,29 @@ def solve(TESTCASE, SETTINGS):
     # Assign any slack nodes
     for ele in slack:
         ele.assign_nodes()
-
+        
+    # Assign indexes
+    for ele in generator:
+        ele.assign_indexes()
+    
+    injection = []
     # FEASIBILITY: adding current injections to each bus
     if (feasibility):
-        injection = []
         for b in bus:
+            b.assign_lambda_nodes()
             i = Injections(b.Bus)
             injection.append(i)
+            
+        for ele in slack:
+            ele.assign_lambda_nodes()
+            
 
     # # # Initialize Solution Vector - V and Q values # # #
     # determine the size of the Y matrix by looking at the total number of nodes in the system
     size_Y = Buses._node_index.__next__()
-    
-    # add lagrange multipliers (imaginary and real)
-    if (feasibility):
-        size_Y = size_Y + 2 * len(bus)
-    
+    Buses.lambda_v_start = int(size_Y / 2)
+    print("lambda start index", Buses.lambda_v_start)
+
     # debugging
     
     # printing the class variables for all the important components
@@ -95,7 +102,7 @@ def solve(TESTCASE, SETTINGS):
     
     # TODO: PART 1, STEP 1 - Complete the function to initialize your solution vector v_init.
     v_init =  np.zeros(size_Y)# create a solution vector filled with zeros of size_Y
-    v_init = initialize(size_Y, [*generator,*slack,*load], bus, feasibility = feasibility) # find the initial conditions
+    v_init = initialize(size_Y, bus, generator, slack, flat_start = False, feasibility = feasibility) # find the initial conditions
     print("initial V", v_init)
     #v_init = np.array([1., 0., 1., 0., 1., 0., 1., 0., 0., 0., 0.])
 
@@ -116,6 +123,14 @@ def solve(TESTCASE, SETTINGS):
     # TODO: PART 1, STEP 3 - Write a process_results function to compute the relevant results (voltages, powers,
     #  and anything else of interest) and find the voltage profile (maximum and minimum voltages in the case).
     #  You can decide which arguments to pass to this function yourself.
+    
+    for b in bus:
+        if (b.Type == 1 or b.Type==3):
+            print("Bus: {} Vr:{} Vi:{}".format(b.Bus, b.node_Vr, b.node_Vi))
+        else:
+            print("Bus: {} Vr:{} Vi:{} Q:{}".format(b.Bus, b.node_Vr, b.node_Vi, b.node_Q))
+            
+    
     if (feasibility):
         pass
     else:
