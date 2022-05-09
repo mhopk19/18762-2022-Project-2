@@ -239,8 +239,8 @@ class Loads:
         Y[v_node_i][v_node_r] += v_ir_next
         Y[v_node_i][v_node_i] += v_ii_next
         
-        J[v_node_r] += Beta_rk
-        J[v_node_i] += Beta_ik
+        J[v_node_r] -= Beta_rk
+        J[v_node_i] -= Beta_ik
 
         return Y, J
          

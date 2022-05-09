@@ -17,10 +17,10 @@ casename = 'testcases/GS_4_prior_solution.RAW'
 # the settings for the solver
 settings = {
     "Tolerance": 1E-07,
-    "Max Iters": 100,
+    "Max Iters": 10,
     "Sparse": False,
     "Limiting":  False,
-    "Feasibility": False
+    "Feasibility": True
 }
 
 # run the solver

@@ -195,15 +195,15 @@ class PowerFlow:
             self.Y = np.zeros((size,size))
             self.J = np.zeros(size)
             
-    def reset_stamps_feasibility(self,size_y,size_x):
+    def reset_stamps_feasibility(self,size_y,size_lambda):
         if (self.sparse):
             self.Y = spm.sparse_matrix(size = size_y)
             self.J = spm.sparse_vector(size = size_y)
         else:
             self.Y = np.zeros((size_y,size_y))
-            self.H_grad = np.zeros((size_x, size_x))
-            self.lower_J = np.zeros(size_x)
-            self.L_grad = np.zeros((size_y - size_x, size_y - size_x))
+            self.H_grad = np.zeros((size_lambda, size_lambda))
+            self.lower_J = np.zeros(size_lambda)
+            self.L_grad = np.zeros((size_y - size_lambda, size_y - size_lambda))
             self.J = np.zeros(size_y)  
                   
         
@@ -246,6 +246,8 @@ class PowerFlow:
 
         # initializing the MNA matrix/vectors
         self.reset_stamps(v_size)
+
+
 
         # # # Stamp Linear Power Grid Elements into Y matrix # # #
         for comp in slack + branch + transformer + shunt:
@@ -319,7 +321,7 @@ class PowerFlow:
                       injection):
         
         def plot_matrix(matrix, str = ""):
-            plt.imshow(matrix)
+            plt.imshow(matrix ** .3, cmap='Greys', interpolation='none')
             plt.title(str)
             plt.show()
         
@@ -339,14 +341,15 @@ class PowerFlow:
             v_sol = sm.sparse_vector(arr = v_init)
         # actual v_size is different than size of the full matrix due to feasibility currents
         v_size = self.size_y 
-        x_size = int(self.size_y/2)
-        lambda_size = int(self.size_y/2)
+        x_size = Buses.lambda_v_start
+        lambda_size = v_size - x_size
         
         self.solution_v = np.copy(v)
 
         # initializing the MNA matrix/vectors
-        self.reset_stamps_feasibility(v_size, x_size)
-        
+        self.reset_stamps_feasibility(v_size, lambda_size)
+
+        print("lower j size", self.lower_J.shape)        
         # STAMPING LINEAR COMPONENTS
         
         # stamping cross-term Jacobian
@@ -361,18 +364,20 @@ class PowerFlow:
         print("Y sub1", self.Y[v_size - x_size:v_size , 0:x_size].shape)
         print("Y sub2", self.Y[0:x_size , v_size - x_size:v_size].shape)
         print("Hgrad", H_grad_linear.shape)
+        print("lower j size after linear stamps", self.lower_J.shape)  
         
         # CREATE Y_linear
         
         # add cross term Jacobians
         # grad H
-        self.Y[v_size - x_size:v_size , 0:x_size] = H_grad_linear
-        self.J[v_size - x_size:v_size] = lower_J_linear
+        self.Y[v_size - lambda_size:v_size , 0:lambda_size] = H_grad_linear
+        self.J[v_size -lambda_size:v_size] = lower_J_linear
         
+        print("lower j size after weird linear mapping", self.lower_J.shape)  
         
         # linear dual stamps
         
-        self.Y[0:x_size, v_size - x_size:v_size] = H_grad_linear.transpose()
+        self.Y[0:lambda_size, v_size - lambda_size:v_size] = H_grad_linear.transpose()
         #for comp in branch + slack:
         #    self.Y, self.J = comp.stamp_dual(self.Y, self.J, self.size_y)        
         
@@ -386,27 +391,30 @@ class PowerFlow:
         
         # initialize feasibility analysis matrices
         
-        plot_matrix(Y_linear, "Y matrix after linear H stamps")
+        #plot_matrix(Y_linear, "Y matrix after linear H stamps")
     
         # # # Set Hyper-parameters
         tol = self.tol # chosen NR tolerance
         NR_count = 0  # current NR iteration
         err_max = np.inf # initial error to start loop
         while (err_max > tol and (NR_count < self.max_iters)):
-            self.reset_stamps_feasibility(v_size, x_size)
+            self.reset_stamps_feasibility(v_size, lambda_size)
             self.Y = self.Y + Y_linear
             self.J = self.J + J_linear
             # # # ADDING THE NON-LINEAR COMPONENTS
             
+            print("lower j siz before nonlinear mapping", self.lower_J.shape)
             # # stamping H component of Y matrix
             for comp in load + generator:
                 self.H_grad, self.lower_J = comp.stamp(H_grad_linear, self.lower_J, v_sol)
-            for comp in injection:
-                _, self.lower_J = comp.stamp(self.Y, self.lower_J, v_sol[v_size-x_size:v_size])
             
+            print("lower j size", self.lower_J.shape)
             # add H components to the Y matrix
-            self.Y[v_size - x_size:v_size , 0:x_size] = self.H_grad
-            self.J[v_size - x_size:v_size] = self.lower_J
+            self.Y[v_size - lambda_size:v_size , 0:lambda_size] = self.H_grad
+            self.J[v_size - lambda_size:v_size] = self.lower_J
+            
+            for comp in injection:
+                self.Y, self.J = comp.stamp(self.Y, self.J, v_sol)
             
             # # stamping upper part of Y matrix
             for comp in load + generator:

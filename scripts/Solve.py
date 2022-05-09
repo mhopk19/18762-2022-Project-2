@@ -56,20 +56,32 @@ def solve(TESTCASE, SETTINGS):
     
     injection = []
     # FEASIBILITY: adding current injections to each bus
+    lambda_count = 1
     if (feasibility):
+        lambda_count = 0 # neutral node for injection currents
         for b in bus:
-            b.assign_lambda_nodes()
             i = Injections(b.Bus)
+            i.assign_nodes()
             injection.append(i)
             
+            if (b.Type == 2):
+                lambda_count += 3
+            else:
+                lambda_count += 2
+        
+        
+        for b in bus:
+            b.assign_lambda_nodes()
+        
         for ele in slack:
             ele.assign_lambda_nodes()
+            lambda_count += 2
             
 
     # # # Initialize Solution Vector - V and Q values # # #
     # determine the size of the Y matrix by looking at the total number of nodes in the system
     size_Y = Buses._node_index.__next__()
-    Buses.lambda_v_start = int(size_Y / 2)
+    Buses.lambda_v_start = size_Y - lambda_count
     print("lambda start index", Buses.lambda_v_start)
 
     # debugging

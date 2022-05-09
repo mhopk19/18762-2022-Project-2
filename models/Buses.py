@@ -56,6 +56,7 @@ class Buses:
                                                                                                self.node_Vi)
         return return_string
 
+    
     def assign_nodes(self):
         """Assign nodes based on the bus type.
 

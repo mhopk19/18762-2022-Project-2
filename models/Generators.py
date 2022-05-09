@@ -362,8 +362,8 @@ class Generators:
         Y[q_node][v_node_i] += v_qi_next
         Y[q_node][q_node] += v_qq_next
         
-        J[v_node_r] += Beta_rk
-        J[v_node_i] += Beta_ik
-        J[q_node] += veq_hist
+        J[v_node_r] -= Beta_rk
+        J[v_node_i] -= Beta_ik
+        J[q_node] -= veq_hist
 
         return Y, J
